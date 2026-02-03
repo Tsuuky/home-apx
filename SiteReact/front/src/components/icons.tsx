@@ -48,3 +48,12 @@ export function IconStock(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function IconWater(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps} {...props} aria-hidden="true">
+      <path d="M12 3s5 5 5 9a5 5 0 1 1-10 0c0-4 5-9 5-9Z" />
+      <path d="M9.5 14.5c.6 1 1.7 1.7 2.8 1.7" />
+    </svg>
+  );
+}

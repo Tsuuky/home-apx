@@ -9,11 +9,13 @@ Ce logiciel suit la consommation de granulés et le stock associé, tout en croi
 - **Relevés quotidiens** : enregistrement et modification des consommations journalières (en kg ou en sacs).
 - **Suivi du stock** : point de départ (stock initial), livraisons, corrections d’inventaire, et stock courant.
 - **Tableau de bord** : synthèse des indicateurs clés (kg consommés, DJU cumulés, kg/DJU).
+- **Eau froide** : relevés mensuels, consommation par jour, alertes en cas d’écarts et graphique dédié.
 
 ## Architecture
 
 - **API (Node/Express + Prisma)** : expose les endpoints pour les saisons, les relevés et le stock.
 - **Front-end (React)** : interface pour saisir les données et visualiser les indicateurs.
+- **Module eau froide** : calcul de consommation entre relevés et rappel mensuel.
 
 ## Flux de travail rapide
 

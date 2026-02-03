@@ -69,3 +69,12 @@ model StockMovement {
 
   @@index([date])
 }
+
+model ColdWaterReading {
+  date      DateTime @id
+  cubicM    Float
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}

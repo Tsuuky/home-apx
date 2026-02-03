@@ -43,6 +43,25 @@
   gap: 12px;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nav-group-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+.nav-group-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .nav-link {
   display: inline-flex;
   align-items: center;
@@ -142,6 +161,27 @@
 .notice-error {
   border-color: rgba(255, 80, 80, 0.35);
   background: rgba(255, 80, 80, 0.12);
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.badge-warning {
+  border-color: rgba(255, 196, 92, 0.45);
+  background: rgba(255, 196, 92, 0.12);
+}
+
+.badge-alert {
+  border-color: rgba(255, 90, 90, 0.45);
+  background: rgba(255, 90, 90, 0.15);
 }
 
 @media (max-width: 720px) {

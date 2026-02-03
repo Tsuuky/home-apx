@@ -1,11 +1,13 @@
 import { NavLink } from "react-router-dom";
-import { IconDashboard, IconSeason, IconStock } from "./icons";
+import { IconDashboard, IconSeason, IconStock, IconWater } from "./icons";
 
-const navItems = [
+const heatingItems = [
   { to: "/", label: "Dashboard", Icon: IconDashboard },
   { to: "/season", label: "Saisons", Icon: IconSeason },
   { to: "/stock", label: "Stock", Icon: IconStock },
 ];
+
+const waterItems = [{ to: "/water", label: "Eau froide", Icon: IconWater }];
 
 export default function Navbar() {
   return (
@@ -19,19 +21,42 @@ export default function Navbar() {
       </div>
 
       <nav className="nav-links">
-        {navItems.map(({ to, label, Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `nav-link${isActive ? " nav-link--active" : ""}`
-            }
-            end={to === "/"}
-          >
-            <Icon />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        <div className="nav-group">
+          <div className="nav-group-title">Chauffage</div>
+          <div className="nav-group-links">
+            {heatingItems.map(({ to, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `nav-link${isActive ? " nav-link--active" : ""}`
+                }
+                end={to === "/"}
+              >
+                <Icon />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </div>
+        <div className="nav-group">
+          <div className="nav-group-title">Eau froide</div>
+          <div className="nav-group-links">
+            {waterItems.map(({ to, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `nav-link${isActive ? " nav-link--active" : ""}`
+                }
+                end={to === "/water"}
+              >
+                <Icon />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </div>
       </nav>
     </header>
   );

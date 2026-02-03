@@ -66,6 +66,12 @@ export default function Season() {
   const [updateBagKg, setUpdateBagKg] = useState("15");
   const [updateNote, setUpdateNote] = useState("");
 
+  const [editName, setEditName] = useState("");
+  const [editStart, setEditStart] = useState(todayISO());
+  const [editBaseC, setEditBaseC] = useState("18");
+
+  const [deleteDate, setDeleteDate] = useState(todayISO());
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -77,6 +83,9 @@ export default function Season() {
       if (s.data.season) {
         const st = await api.get<SeasonStatsResponse>(`/season/${s.data.season.id}/stats`);
         setStats(st.data);
+        setEditName(s.data.season.name);
+        setEditStart(new Date(s.data.season.startDate).toISOString().slice(0, 10));
+        setEditBaseC(String(s.data.season.baseC));
       } else {
         setStats(null);
       }
@@ -125,6 +134,32 @@ export default function Season() {
     try {
       await api.post(`/season/${season.id}/close`, { end: closeEnd });
       setMessage("✅ Saison clôturée");
+      await refresh();
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitUpdateSeason() {
+    if (!season) return;
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const baseC = Number(editBaseC);
+      if (!editName.trim()) throw new Error("Nom requis");
+      if (!Number.isFinite(baseC) || baseC <= 0) throw new Error("Base °C invalide");
+
+      await api.patch(`/season/${season.id}`, {
+        name: editName.trim(),
+        start: editStart,
+        baseC,
+      });
+
+      setMessage("✅ Saison mise à jour");
       await refresh();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
@@ -210,6 +245,22 @@ export default function Season() {
     }
   }
 
+  async function submitDeleteReading() {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      await api.delete(`/pellets/daily/${deleteDate}`);
+      setMessage("✅ Relevé supprimé");
+      await refresh();
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="page">
       <section className="section-card">
@@ -278,6 +329,31 @@ export default function Season() {
         </div>
         <button className="btn" onClick={submitCloseSeason} disabled={!season || busy}>
           Clôturer
+        </button>
+      </section>
+
+      <section className="section-card">
+        <h2 className="section-title">Modifier la saison active</h2>
+        <div className="form-row">
+          <label>Nom</label>
+          <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} disabled={!season} />
+        </div>
+        <div className="form-row">
+          <label>Début</label>
+          <input
+            className="input"
+            type="date"
+            value={editStart}
+            onChange={(e) => setEditStart(e.target.value)}
+            disabled={!season}
+          />
+        </div>
+        <div className="form-row">
+          <label>Base °C</label>
+          <input className="input" value={editBaseC} onChange={(e) => setEditBaseC(e.target.value)} disabled={!season} />
+        </div>
+        <button className="btn" onClick={submitUpdateSeason} disabled={!season || busy}>
+          Mettre à jour
         </button>
       </section>
 
@@ -353,6 +429,17 @@ export default function Season() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="section-card">
+        <h2 className="section-title">Supprimer un relevé</h2>
+        <div className="form-row">
+          <label>Date</label>
+          <input className="input" type="date" value={deleteDate} onChange={(e) => setDeleteDate(e.target.value)} />
+        </div>
+        <button className="btn" onClick={submitDeleteReading} disabled={busy}>
+          Supprimer
+        </button>
       </section>
     </div>
   );

@@ -68,6 +68,50 @@ pelletsRouter.post("/season/:id/close", async (req, res) => {
   res.json({ ok: true, season });
 });
 
+// Modifier une saison (ex: saison active)
+pelletsRouter.patch("/season/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    baseC: z.number().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  if (
+    parsed.data.name == null &&
+    parsed.data.start == null &&
+    parsed.data.end == null &&
+    parsed.data.baseC == null
+  ) {
+    return res.status(400).json({ error: "Provide at least one field to update" });
+  }
+
+  const data: {
+    name?: string;
+    startDate?: Date;
+    endDate?: Date | null;
+    baseC?: number;
+  } = {};
+
+  if (parsed.data.name) data.name = parsed.data.name;
+  if (parsed.data.start) data.startDate = parseISODateToUTC(parsed.data.start);
+  if (parsed.data.end) data.endDate = parseISODateToUTC(parsed.data.end);
+  if (parsed.data.baseC != null) data.baseC = parsed.data.baseC;
+
+  const season = await prisma.season.update({
+    where: { id },
+    data,
+  });
+
+  res.json({ ok: true, season });
+});
+
 /**
  * CONSO JOURNALIÈRE
  * - soit tu envoies kg
@@ -182,6 +226,20 @@ pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
   });
 
   res.json({ ok: true, row });
+});
+
+pelletsRouter.delete("/pellets/daily/:date", async (req, res) => {
+  const dateStr = req.params.date;
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  if (!dateOk) return res.status(400).json({ error: "Invalid date param YYYY-MM-DD" });
+
+  const date = parseISODateToUTC(dateStr);
+  const existing = await prisma.pelletDaily.findUnique({ where: { date } });
+  if (!existing) return res.status(404).json({ error: "Daily reading not found" });
+
+  await prisma.pelletDaily.delete({ where: { date } });
+
+  res.json({ ok: true });
 });
 
 pelletsRouter.put("/pellets/daily/:date", async (req, res) => {
