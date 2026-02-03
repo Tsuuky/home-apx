@@ -3,6 +3,7 @@ import { IconDashboard, IconSeason, IconStock, IconWater, IconList } from "./ico
 
 const heatingItems = [
   { to: "/", label: "Dashboard", Icon: IconDashboard },
+  { to: "/wood", label: "Bois", Icon: IconSeason },
   { to: "/season", label: "Saisons", Icon: IconSeason },
   { to: "/stock", label: "Stock", Icon: IconStock },
   { to: "/readings", label: "Relèves", Icon: IconList },

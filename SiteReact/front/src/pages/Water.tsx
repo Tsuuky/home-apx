@@ -12,6 +12,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { IconWater } from "../components/icons";
+import Modal from "../components/Modal";
 
 type Reading = {
   date: string;
@@ -33,6 +34,11 @@ function toISODate(d: Date) {
 
 function todayISO() {
   return toISODate(new Date());
+}
+
+function firstDayOfMonthISO() {
+  const d = new Date();
+  return toISODate(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 function diffDays(start: string, end: string) {
@@ -59,6 +65,11 @@ export default function Water() {
   const [deleteDate, setDeleteDate] = useState(todayISO());
 
   const navigate = useNavigate();
+
+  const [modalType, setModalType] = useState<"create" | "edit" | "delete" | null>(null);
+  const [rangeType, setRangeType] = useState<"custom" | "week" | "month" | "year">("month");
+  const [rangeStart, setRangeStart] = useState(firstDayOfMonthISO());
+  const [rangeEnd, setRangeEnd] = useState(todayISO());
 
   async function refresh() {
     setLoading(true);
@@ -112,11 +123,27 @@ export default function Water() {
     return rows;
   }, [readings]);
 
+  const filteredIntervals = useMemo(() => {
+    if (intervals.length === 0) return [];
+    const today = new Date();
+    let start = rangeStart;
+    let end = rangeEnd;
+    if (rangeType !== "custom") {
+      const startDate = new Date(today);
+      if (rangeType === "week") startDate.setDate(today.getDate() - 7);
+      if (rangeType === "month") startDate.setMonth(today.getMonth() - 1);
+      if (rangeType === "year") startDate.setFullYear(today.getFullYear() - 1);
+      start = toISODate(startDate);
+      end = toISODate(today);
+    }
+    return intervals.filter((row) => row.to >= start && row.to <= end);
+  }, [intervals, rangeType, rangeStart, rangeEnd]);
+
   const avgPerDay = useMemo(() => {
-    if (intervals.length === 0) return null;
-    const total = intervals.reduce((sum, row) => sum + row.perDay, 0);
-    return total / intervals.length;
-  }, [intervals]);
+    if (filteredIntervals.length === 0) return null;
+    const total = filteredIntervals.reduce((sum, row) => sum + row.perDay, 0);
+    return total / filteredIntervals.length;
+  }, [filteredIntervals]);
 
   const reminderBadge = useMemo(() => {
     if (readings.length === 0) return "badge badge-alert";
@@ -138,12 +165,12 @@ export default function Water() {
 
   const chartData = useMemo(
     () =>
-      intervals.map((row) => ({
+      filteredIntervals.map((row) => ({
         date: row.to,
         perDay: Number(row.perDay.toFixed(3)),
         delta: Number(row.delta.toFixed(2)),
       })),
-    [intervals]
+    [filteredIntervals]
   );
 
   async function submitCreate() {
@@ -216,6 +243,10 @@ export default function Water() {
     }
   }
 
+  function closeModal() {
+    setModalType(null);
+  }
+
   return (
     <div className="page">
       <section className="section-card">
@@ -229,6 +260,17 @@ export default function Water() {
         <button className="btn" onClick={() => navigate("/readings")}>
           Voir les relevés eau froide
         </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          <button className="btn" onClick={() => setModalType("create")}>
+            Créer un relevé
+          </button>
+          <button className="btn" onClick={() => setModalType("edit")}>
+            Modifier un relevé
+          </button>
+          <button className="btn" onClick={() => setModalType("delete")}>
+            Supprimer un relevé
+          </button>
+        </div>
         <div className={reminderBadge}>{reminderText}</div>
       </section>
 
@@ -236,7 +278,27 @@ export default function Water() {
       {error && <div className="notice notice-error">{error}</div>}
 
       <section className="section-card">
-        <h2 className="section-title">Graphique de consommation</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <h2 className="section-title">Graphique de consommation</h2>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              className="input"
+              value={rangeType}
+              onChange={(e) => setRangeType(e.target.value as "custom" | "week" | "month" | "year")}
+            >
+              <option value="week">7 jours</option>
+              <option value="month">1 mois</option>
+              <option value="year">1 an</option>
+              <option value="custom">Période</option>
+            </select>
+            {rangeType === "custom" && (
+              <>
+                <input className="input" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+                <input className="input" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
+              </>
+            )}
+          </div>
+        </div>
         {loading ? (
           <p>Chargement…</p>
         ) : chartData.length === 0 ? (
@@ -280,7 +342,7 @@ export default function Water() {
 
       <section className="section-card">
         <h2 className="section-title">Détail des périodes</h2>
-        {intervals.length === 0 ? (
+        {filteredIntervals.length === 0 ? (
           <p>Pas assez de relevés.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -294,7 +356,7 @@ export default function Water() {
                 </tr>
               </thead>
               <tbody>
-                {intervals.map((row) => {
+                {filteredIntervals.map((row) => {
                   const ratio = avgPerDay ? row.perDay / avgPerDay : 1;
                   const isHigh = ratio > 1.25;
                   const isLow = ratio < 0.75;
@@ -317,59 +379,73 @@ export default function Water() {
         )}
       </section>
 
-      <section className="section-card">
-        <h2 className="section-title">Créer un relevé</h2>
-        <div className="form-row">
-          <label>Date</label>
-          <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-        </div>
-        <div className="form-row">
-          <label>Index (m³)</label>
-          <input className="input" value={newCubicM} onChange={(e) => setNewCubicM(e.target.value)} placeholder="ex: 123.4" />
-        </div>
-        <div className="form-row">
-          <label>Note</label>
-          <input className="input" value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="optionnel" />
-        </div>
-        <button className="btn btn-primary" onClick={submitCreate} disabled={busy}>
-          Enregistrer
-        </button>
-      </section>
-
-      <section className="section-card">
-        <h2 className="section-title">Modifier un relevé</h2>
-        <div className="form-row">
-          <label>Date</label>
-          <input className="input" type="date" value={updateDate} onChange={(e) => setUpdateDate(e.target.value)} />
-        </div>
-        <div className="form-row">
-          <label>Nouveau m³</label>
-          <input
-            className="input"
-            value={updateCubicM}
-            onChange={(e) => setUpdateCubicM(e.target.value)}
-            placeholder="ex: 124.0"
-          />
-        </div>
-        <div className="form-row">
-          <label>Note</label>
-          <input className="input" value={updateNote} onChange={(e) => setUpdateNote(e.target.value)} placeholder="optionnel" />
-        </div>
-        <button className="btn" onClick={submitUpdate} disabled={busy}>
-          Mettre à jour
-        </button>
-      </section>
-
-      <section className="section-card">
-        <h2 className="section-title">Supprimer un relevé</h2>
-        <div className="form-row">
-          <label>Date</label>
-          <input className="input" type="date" value={deleteDate} onChange={(e) => setDeleteDate(e.target.value)} />
-        </div>
-        <button className="btn" onClick={submitDelete} disabled={busy}>
-          Supprimer
-        </button>
-      </section>
+      {modalType && (
+        <Modal
+          title={
+            modalType === "create"
+              ? "Créer un relevé"
+              : modalType === "edit"
+              ? "Modifier un relevé"
+              : "Supprimer un relevé"
+          }
+          onClose={closeModal}
+        >
+          {modalType === "create" && (
+            <>
+              <div className="form-row">
+                <label>Date</label>
+                <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label>Index (m³)</label>
+                <input className="input" value={newCubicM} onChange={(e) => setNewCubicM(e.target.value)} placeholder="ex: 123.4" />
+              </div>
+              <div className="form-row">
+                <label>Note</label>
+                <input className="input" value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="optionnel" />
+              </div>
+              <button className="btn btn-primary" onClick={submitCreate} disabled={busy}>
+                Enregistrer
+              </button>
+            </>
+          )}
+          {modalType === "edit" && (
+            <>
+              <div className="form-row">
+                <label>Date</label>
+                <input className="input" type="date" value={updateDate} onChange={(e) => setUpdateDate(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label>Nouveau m³</label>
+                <input
+                  className="input"
+                  value={updateCubicM}
+                  onChange={(e) => setUpdateCubicM(e.target.value)}
+                  placeholder="ex: 124.0"
+                />
+              </div>
+              <div className="form-row">
+                <label>Note</label>
+                <input className="input" value={updateNote} onChange={(e) => setUpdateNote(e.target.value)} placeholder="optionnel" />
+              </div>
+              <button className="btn btn-primary" onClick={submitUpdate} disabled={busy}>
+                Mettre à jour
+              </button>
+            </>
+          )}
+          {modalType === "delete" && (
+            <>
+              <div className="form-row">
+                <label>Date</label>
+                <input className="input" type="date" value={deleteDate} onChange={(e) => setDeleteDate(e.target.value)} />
+              </div>
+              <button className="btn btn-primary" onClick={submitDelete} disabled={busy}>
+                Supprimer
+              </button>
+            </>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
