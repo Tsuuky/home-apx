@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { IconDashboard, IconSeason, IconStock, IconWater } from "./icons";
+import { IconDashboard, IconSeason, IconStock, IconWater, IconList } from "./icons";
 
 const heatingItems = [
   { to: "/", label: "Dashboard", Icon: IconDashboard },
   { to: "/season", label: "Saisons", Icon: IconSeason },
   { to: "/stock", label: "Stock", Icon: IconStock },
+  { to: "/readings", label: "Relèves", Icon: IconList },
 ];
 
 const waterItems = [{ to: "/water", label: "Eau froide", Icon: IconWater }];

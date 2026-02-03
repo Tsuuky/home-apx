@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { IconWater } from "../components/icons";
 
@@ -56,6 +57,8 @@ export default function Water() {
   const [updateNote, setUpdateNote] = useState("");
 
   const [deleteDate, setDeleteDate] = useState(todayISO());
+
+  const navigate = useNavigate();
 
   async function refresh() {
     setLoading(true);
@@ -223,6 +226,9 @@ export default function Water() {
         <p style={{ marginTop: 0, opacity: 0.75 }}>
           Suivi mensuel des compteurs d’eau froide avec consommation moyenne par jour et alertes.
         </p>
+        <button className="btn" onClick={() => navigate("/readings")}>
+          Voir les relevés eau froide
+        </button>
         <div className={reminderBadge}>{reminderText}</div>
       </section>
 

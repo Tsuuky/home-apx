@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { IconSeason } from "../components/icons";
 
@@ -71,6 +72,8 @@ export default function Season() {
   const [editBaseC, setEditBaseC] = useState("18");
 
   const [deleteDate, setDeleteDate] = useState(todayISO());
+
+  const navigate = useNavigate();
 
   async function refresh() {
     setLoading(true);
@@ -271,6 +274,9 @@ export default function Season() {
         <p style={{ marginTop: 0, opacity: 0.75 }}>
           Crée une nouvelle saison, suis la saison active et clôture-la en fin de période.
         </p>
+        <button className="btn" onClick={() => navigate("/readings")}>
+          Voir les relevés conso bois
+        </button>
         {loading && <p>Chargement…</p>}
         {!loading && !season && <p>Aucune saison active.</p>}
         {season && (
