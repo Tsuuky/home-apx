@@ -2,6 +2,7 @@ import express from "express";
 import cron from "node-cron";
 import { router } from "./routes/dju.routes";
 import { pelletsRouter } from "./routes/pellets.routes";
+import { waterRouter } from "./routes/water.routes";
 import { backfillLastYear } from "./jobs/backfill.job";
 
 const app = express();
@@ -14,6 +15,7 @@ app.get("/", (_req, res) => {
 // ✅ IMPORTANT : prefix
 app.use("/api", router);
 app.use("/api", pelletsRouter);
+app.use("/api", waterRouter);
 
 const PORT = Number(process.env.PORT ?? 3001);
 

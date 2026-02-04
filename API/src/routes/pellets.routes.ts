@@ -68,11 +68,180 @@ pelletsRouter.post("/season/:id/close", async (req, res) => {
   res.json({ ok: true, season });
 });
 
+// Modifier une saison (ex: saison active)
+pelletsRouter.patch("/season/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    baseC: z.number().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  if (
+    parsed.data.name == null &&
+    parsed.data.start == null &&
+    parsed.data.end == null &&
+    parsed.data.baseC == null
+  ) {
+    return res.status(400).json({ error: "Provide at least one field to update" });
+  }
+
+  const data: {
+    name?: string;
+    startDate?: Date;
+    endDate?: Date | null;
+    baseC?: number;
+  } = {};
+
+  if (parsed.data.name) data.name = parsed.data.name;
+  if (parsed.data.start) data.startDate = parseISODateToUTC(parsed.data.start);
+  if (parsed.data.end) data.endDate = parseISODateToUTC(parsed.data.end);
+  if (parsed.data.baseC != null) data.baseC = parsed.data.baseC;
+
+  const season = await prisma.season.update({
+    where: { id },
+    data,
+  });
+
+  res.json({ ok: true, season });
+});
+
 /**
  * CONSO JOURNALIÈRE
  * - soit tu envoies kg
  * - soit tu envoies bags (+ bagKg optionnel, défaut 15)
  */
+pelletsRouter.post("/pellets/daily", async (req, res) => {
+  const schema = z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    kg: z.number().positive().optional(),
+    bags: z.number().int().positive().optional(),
+    bagKg: z.number().positive().optional().default(15),
+    note: z.string().optional(),
+    seasonId: z.number().int().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  if (parsed.data.kg == null && parsed.data.bags == null) {
+    return res.status(400).json({ error: "Provide kg OR bags" });
+  }
+
+  const date = parseISODateToUTC(parsed.data.date);
+
+  const existing = await prisma.pelletDaily.findUnique({ where: { date } });
+  if (existing) return res.status(409).json({ error: "Daily reading already exists" });
+
+  let seasonId = parsed.data.seasonId ?? null;
+  if (seasonId == null) {
+    const active = await prisma.season.findFirst({ where: { endDate: null } });
+    seasonId = active?.id ?? null;
+  }
+
+  const bagKg = parsed.data.bagKg ?? 15;
+  const kg = parsed.data.kg ?? bagsToKg(parsed.data.bags!, bagKg);
+
+  const row = await prisma.pelletDaily.create({
+    data: {
+      date,
+      kg,
+      bags: parsed.data.bags ?? null,
+      bagKg: parsed.data.bags != null ? bagKg : null,
+      note: parsed.data.note ?? null,
+      seasonId,
+    },
+  });
+
+  res.json({ ok: true, row });
+});
+
+pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
+  const dateStr = req.params.date;
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  if (!dateOk) return res.status(400).json({ error: "Invalid date param YYYY-MM-DD" });
+
+  const schema = z.object({
+    kg: z.number().positive().optional(),
+    bags: z.number().int().positive().optional(),
+    bagKg: z.number().positive().optional().default(15),
+    note: z.string().optional(),
+    seasonId: z.number().int().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  if (
+    parsed.data.kg == null &&
+    parsed.data.bags == null &&
+    parsed.data.note == null &&
+    parsed.data.seasonId == null
+  ) {
+    return res.status(400).json({ error: "Provide at least one field to update" });
+  }
+
+  const date = parseISODateToUTC(dateStr);
+  const existing = await prisma.pelletDaily.findUnique({ where: { date } });
+  if (!existing) return res.status(404).json({ error: "Daily reading not found" });
+
+  const data: {
+    kg?: number;
+    bags?: number | null;
+    bagKg?: number | null;
+    note?: string | null;
+    seasonId?: number | null;
+  } = {};
+
+  if (parsed.data.kg != null) {
+    data.kg = parsed.data.kg;
+    if (parsed.data.bags != null) {
+      data.bags = parsed.data.bags;
+      data.bagKg = parsed.data.bagKg ?? 15;
+    }
+  } else if (parsed.data.bags != null) {
+    const bagKg = parsed.data.bagKg ?? 15;
+    data.kg = bagsToKg(parsed.data.bags, bagKg);
+    data.bags = parsed.data.bags;
+    data.bagKg = bagKg;
+  }
+
+  if (parsed.data.note !== undefined) {
+    data.note = parsed.data.note ?? null;
+  }
+
+  if (parsed.data.seasonId !== undefined) {
+    data.seasonId = parsed.data.seasonId ?? null;
+  }
+
+  const row = await prisma.pelletDaily.update({
+    where: { date },
+    data,
+  });
+
+  res.json({ ok: true, row });
+});
+
+pelletsRouter.delete("/pellets/daily/:date", async (req, res) => {
+  const dateStr = req.params.date;
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  if (!dateOk) return res.status(400).json({ error: "Invalid date param YYYY-MM-DD" });
+
+  const date = parseISODateToUTC(dateStr);
+  const existing = await prisma.pelletDaily.findUnique({ where: { date } });
+  if (!existing) return res.status(404).json({ error: "Daily reading not found" });
+
+  await prisma.pelletDaily.delete({ where: { date } });
+
+  res.json({ ok: true });
+});
+
 pelletsRouter.put("/pellets/daily/:date", async (req, res) => {
   const dateStr = req.params.date;
   const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
