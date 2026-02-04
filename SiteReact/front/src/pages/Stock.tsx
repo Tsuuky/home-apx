@@ -33,6 +33,7 @@ export default function Stock() {
   const [deliveryKg, setDeliveryKg] = useState("");
   const [deliveryBags, setDeliveryBags] = useState("");
   const [deliveryBagKg, setDeliveryBagKg] = useState("15");
+  const [deliveryPricePerBag, setDeliveryPricePerBag] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
 
   const [adjustDate, setAdjustDate] = useState(todayISO());
@@ -100,6 +101,7 @@ export default function Stock() {
         kg?: number;
         bags?: number;
         bagKg?: number;
+        pricePerBag?: number;
         note?: string;
       } = { date: deliveryDate };
 
@@ -114,12 +116,18 @@ export default function Stock() {
       }
 
       if (deliveryNote.trim()) payload.note = deliveryNote.trim();
+      if (deliveryPricePerBag.trim()) {
+        const pricePerBag = Number(deliveryPricePerBag);
+        if (!Number.isFinite(pricePerBag) || pricePerBag < 0) throw new Error("Prix sac invalide");
+        payload.pricePerBag = pricePerBag;
+      }
 
       await api.post("/stock/delivery", payload);
 
       setMessage("✅ Livraison enregistrée");
       setDeliveryKg("");
       setDeliveryBags("");
+      setDeliveryPricePerBag("");
       setDeliveryNote("");
       await refresh();
     } catch (e: any) {
@@ -212,6 +220,15 @@ export default function Stock() {
         <div className="form-row">
           <label>kg/sac</label>
           <input className="input" value={deliveryBagKg} onChange={(e) => setDeliveryBagKg(e.target.value)} placeholder="15" />
+        </div>
+        <div className="form-row">
+          <label>Prix sac (€)</label>
+          <input
+            className="input"
+            value={deliveryPricePerBag}
+            onChange={(e) => setDeliveryPricePerBag(e.target.value)}
+            placeholder="ex: 6.50"
+          />
         </div>
         <div className="form-row">
           <label>Note</label>

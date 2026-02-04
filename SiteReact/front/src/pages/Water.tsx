@@ -17,6 +17,7 @@ import Modal from "../components/Modal";
 type Reading = {
   date: string;
   cubicM: number;
+  pricePerM3?: number | null;
   note?: string | null;
 };
 
@@ -56,10 +57,12 @@ export default function Water() {
 
   const [newDate, setNewDate] = useState(todayISO());
   const [newCubicM, setNewCubicM] = useState("");
+  const [newPricePerM3, setNewPricePerM3] = useState("");
   const [newNote, setNewNote] = useState("");
 
   const [updateDate, setUpdateDate] = useState(todayISO());
   const [updateCubicM, setUpdateCubicM] = useState("");
+  const [updatePricePerM3, setUpdatePricePerM3] = useState("");
   const [updateNote, setUpdateNote] = useState("");
 
   const [deleteDate, setDeleteDate] = useState(todayISO());
@@ -70,6 +73,11 @@ export default function Water() {
   const [rangeType, setRangeType] = useState<"custom" | "week" | "month" | "year">("month");
   const [rangeStart, setRangeStart] = useState(firstDayOfMonthISO());
   const [rangeEnd, setRangeEnd] = useState(todayISO());
+  const [visibleLines, setVisibleLines] = useState({ perDay: true, delta: true });
+
+  function toggleLine(key: "perDay" | "delta") {
+    setVisibleLines((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   async function refresh() {
     setLoading(true);
@@ -145,6 +153,15 @@ export default function Water() {
     return total / filteredIntervals.length;
   }, [filteredIntervals]);
 
+  const latestPricePerM3 = useMemo(() => {
+    if (readings.length === 0) return null;
+    const sorted = [...readings].sort((a, b) => b.date.localeCompare(a.date));
+    for (const row of sorted) {
+      if (row.pricePerM3 != null) return row.pricePerM3;
+    }
+    return null;
+  }, [readings]);
+
   const reminderBadge = useMemo(() => {
     if (readings.length === 0) return "badge badge-alert";
     const last = readings[readings.length - 1];
@@ -181,15 +198,21 @@ export default function Water() {
     try {
       const cubicM = Number(newCubicM);
       if (!Number.isFinite(cubicM) || cubicM < 0) throw new Error("Valeur m³ invalide");
+      const pricePerM3 = newPricePerM3.trim() ? Number(newPricePerM3) : null;
+      if (pricePerM3 != null && (!Number.isFinite(pricePerM3) || pricePerM3 < 0)) {
+        throw new Error("Prix m³ invalide");
+      }
 
       await api.post("/water/cold", {
         date: newDate,
         cubicM,
+        pricePerM3: pricePerM3 ?? undefined,
         note: newNote || undefined,
       });
 
       setMessage("✅ Relevé eau froide créé");
       setNewCubicM("");
+      setNewPricePerM3("");
       setNewNote("");
       await refresh();
     } catch (e: any) {
@@ -205,11 +228,16 @@ export default function Water() {
     setError(null);
 
     try {
-      const payload: { cubicM?: number; note?: string } = {};
+      const payload: { cubicM?: number; pricePerM3?: number; note?: string } = {};
       if (updateCubicM.trim()) {
         const cubicM = Number(updateCubicM);
         if (!Number.isFinite(cubicM) || cubicM < 0) throw new Error("Valeur m³ invalide");
         payload.cubicM = cubicM;
+      }
+      if (updatePricePerM3.trim()) {
+        const pricePerM3 = Number(updatePricePerM3);
+        if (!Number.isFinite(pricePerM3) || pricePerM3 < 0) throw new Error("Prix m³ invalide");
+        payload.pricePerM3 = pricePerM3;
       }
       if (updateNote.trim()) payload.note = updateNote.trim();
 
@@ -218,6 +246,7 @@ export default function Water() {
       await api.patch(`/water/cold/${updateDate}`, payload);
       setMessage("✅ Relevé eau froide mis à jour");
       setUpdateCubicM("");
+      setUpdatePricePerM3("");
       setUpdateNote("");
       await refresh();
     } catch (e: any) {
@@ -299,21 +328,42 @@ export default function Water() {
             )}
           </div>
         </div>
-        {loading ? (
-          <p>Chargement…</p>
-        ) : chartData.length === 0 ? (
-          <p>Ajoutez au moins deux relevés pour générer le graphique.</p>
-        ) : (
-          <div style={{ width: "100%", height: 300 }}>
-            <ResponsiveContainer>
-              <LineChart data={chartData}>
+      {loading ? (
+        <p>Chargement…</p>
+      ) : chartData.length === 0 ? (
+        <p>Ajoutez au moins deux relevés pour générer le graphique.</p>
+      ) : (
+        <div style={{ width: "100%", height: 300 }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="perDay" name="m³ / jour" stroke="#7cb8ff" />
-                <Line type="monotone" dataKey="delta" name="Conso période (m³)" stroke="#7dffa7" />
+                <Legend
+                  onClick={(entry) => {
+                    const key = entry?.dataKey;
+                    if (key === "perDay" || key === "delta") {
+                      toggleLine(key);
+                    }
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="perDay"
+                  name="m³ / jour"
+                  stroke="#7cb8ff"
+                  hide={!visibleLines.perDay}
+                  onClick={() => toggleLine("perDay")}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="delta"
+                  name="Conso période (m³)"
+                  stroke="#7dffa7"
+                  hide={!visibleLines.delta}
+                  onClick={() => toggleLine("delta")}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -334,6 +384,12 @@ export default function Water() {
               <div style={{ fontSize: 12, opacity: 0.7 }}>Dernière période</div>
               <div style={{ fontSize: 22, fontWeight: 600 }}>
                 {intervals.length > 0 ? intervals[intervals.length - 1].perDay.toFixed(3) : "—"} m³ / jour
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Dernier prix m³</div>
+              <div style={{ fontSize: 22, fontWeight: 600 }}>
+                {latestPricePerM3 != null ? `${latestPricePerM3.toFixed(2)} € / m³` : "—"}
               </div>
             </div>
           </div>
@@ -401,6 +457,15 @@ export default function Water() {
                 <input className="input" value={newCubicM} onChange={(e) => setNewCubicM(e.target.value)} placeholder="ex: 123.4" />
               </div>
               <div className="form-row">
+                <label>Prix m³ (€)</label>
+                <input
+                  className="input"
+                  value={newPricePerM3}
+                  onChange={(e) => setNewPricePerM3(e.target.value)}
+                  placeholder="ex: 2.85"
+                />
+              </div>
+              <div className="form-row">
                 <label>Note</label>
                 <input className="input" value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="optionnel" />
               </div>
@@ -422,6 +487,15 @@ export default function Water() {
                   value={updateCubicM}
                   onChange={(e) => setUpdateCubicM(e.target.value)}
                   placeholder="ex: 124.0"
+                />
+              </div>
+              <div className="form-row">
+                <label>Prix m³ (€)</label>
+                <input
+                  className="input"
+                  value={updatePricePerM3}
+                  onChange={(e) => setUpdatePricePerM3(e.target.value)}
+                  placeholder="ex: 2.85"
                 />
               </div>
               <div className="form-row">

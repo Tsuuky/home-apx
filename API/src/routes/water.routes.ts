@@ -13,6 +13,7 @@ waterRouter.post("/water/cold", async (req, res) => {
   const schema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     cubicM: z.number().nonnegative(),
+    pricePerM3: z.number().nonnegative().optional(),
     note: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
@@ -26,6 +27,7 @@ waterRouter.post("/water/cold", async (req, res) => {
     data: {
       date,
       cubicM: parsed.data.cubicM,
+      pricePerM3: parsed.data.pricePerM3 ?? null,
       note: parsed.data.note ?? null,
     },
   });
@@ -40,12 +42,13 @@ waterRouter.patch("/water/cold/:date", async (req, res) => {
 
   const schema = z.object({
     cubicM: z.number().nonnegative().optional(),
+    pricePerM3: z.number().nonnegative().optional(),
     note: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
-  if (parsed.data.cubicM == null && parsed.data.note == null) {
+  if (parsed.data.cubicM == null && parsed.data.pricePerM3 == null && parsed.data.note == null) {
     return res.status(400).json({ error: "Provide at least one field to update" });
   }
 
@@ -57,6 +60,7 @@ waterRouter.patch("/water/cold/:date", async (req, res) => {
     where: { date },
     data: {
       cubicM: parsed.data.cubicM ?? undefined,
+      pricePerM3: parsed.data.pricePerM3 ?? undefined,
       note: parsed.data.note ?? undefined,
     },
   });

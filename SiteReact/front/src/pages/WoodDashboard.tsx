@@ -43,6 +43,16 @@ type StockCurrentResponse = {
   kg: number;
 };
 
+type DeliveryResponse = {
+  ok: boolean;
+  deliveries: Array<{
+    id: number;
+    date: string;
+    kg: number;
+    pricePerBag?: number | null;
+  }>;
+};
+
 function formatNumberFR(n: number, digits = 1) {
   return n.toLocaleString("fr-FR", { maximumFractionDigits: digits });
 }
@@ -99,12 +109,14 @@ export default function WoodDashboard() {
   const [pelletDate, setPelletDate] = useState(todayISO());
   const [pelletBags, setPelletBags] = useState<string>("2");
   const [pelletBagKg, setPelletBagKg] = useState<string>(String(defaultBagKg));
+  const [pelletPricePerBag, setPelletPricePerBag] = useState<string>("");
   const [pelletNote, setPelletNote] = useState<string>("");
 
   // ---- Livraison
   const [deliveryDate, setDeliveryDate] = useState(todayISO());
   const [deliveryBags, setDeliveryBags] = useState<string>("");
   const [deliveryKg, setDeliveryKg] = useState<string>("");
+  const [deliveryPricePerBag, setDeliveryPricePerBag] = useState<string>("");
   const [deliveryNote, setDeliveryNote] = useState<string>("");
 
   // ---- Ajustement stock
@@ -117,18 +129,24 @@ export default function WoodDashboard() {
   const [bulkEnd, setBulkEnd] = useState(todayISO());
   const [bulkBags, setBulkBags] = useState<string>("2");
   const [bulkBagKg, setBulkBagKg] = useState<string>(String(defaultBagKg));
+  const [bulkPricePerBag, setBulkPricePerBag] = useState<string>("");
   const [bulkNote, setBulkNote] = useState<string>("");
   const [bulkSkipExisting, setBulkSkipExisting] = useState(true);
 
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [deliveries, setDeliveries] = useState<DeliveryResponse["deliveries"]>([]);
 
   async function refresh() {
     setLoading(true);
     setError(null);
 
     try {
-      const s = await api.get<ActiveSeasonResponse>("/season/active");
+      const [s, deliveriesRes] = await Promise.all([
+        api.get<ActiveSeasonResponse>("/season/active"),
+        api.get<DeliveryResponse>("/stock/deliveries"),
+      ]);
+      setDeliveries(deliveriesRes.data.deliveries ?? []);
 
       if (!s.data.season) {
         setSeason(null);
@@ -195,18 +213,24 @@ export default function WoodDashboard() {
     try {
       const bags = Number(pelletBags);
       const bagKg = Number(pelletBagKg);
+      const pricePerBag = pelletPricePerBag.trim() ? Number(pelletPricePerBag) : null;
 
       if (!Number.isFinite(bags) || bags <= 0) throw new Error("Sacs: valeur invalide");
       if (!Number.isFinite(bagKg) || bagKg <= 0) throw new Error("Poids sac: valeur invalide");
+      if (pricePerBag != null && (!Number.isFinite(pricePerBag) || pricePerBag < 0)) {
+        throw new Error("Prix sac: valeur invalide");
+      }
 
       await api.put(`/pellets/daily/${pelletDate}`, {
         bags,
         bagKg,
+        pricePerBag: pricePerBag ?? undefined,
         note: pelletNote || undefined,
       });
 
       setActionMsg(`✅ Consommation enregistrée (${pelletDate})`);
       setPelletNote("");
+      setPelletPricePerBag("");
       await refresh();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
@@ -239,12 +263,18 @@ export default function WoodDashboard() {
       }
 
       if (deliveryNote) payload.note = deliveryNote;
+      if (deliveryPricePerBag.trim()) {
+        const pricePerBag = Number(deliveryPricePerBag);
+        if (!Number.isFinite(pricePerBag) || pricePerBag < 0) throw new Error("Prix sac: valeur invalide");
+        payload.pricePerBag = pricePerBag;
+      }
 
       await api.post("/stock/delivery", payload);
 
       setActionMsg(`✅ Livraison enregistrée (${deliveryDate})`);
       setDeliveryKg("");
       setDeliveryBags("");
+      setDeliveryPricePerBag("");
       setDeliveryNote("");
       await refresh();
     } catch (e: any) {
@@ -288,21 +318,27 @@ export default function WoodDashboard() {
     try {
       const bags = Number(bulkBags);
       const bagKg = Number(bulkBagKg);
+      const pricePerBag = bulkPricePerBag.trim() ? Number(bulkPricePerBag) : null;
 
       if (!Number.isFinite(bags) || bags <= 0) throw new Error("Bulk sacs: valeur invalide");
       if (!Number.isFinite(bagKg) || bagKg <= 0) throw new Error("Bulk kg/sac: valeur invalide");
+      if (pricePerBag != null && (!Number.isFinite(pricePerBag) || pricePerBag < 0)) {
+        throw new Error("Bulk prix sac: valeur invalide");
+      }
 
       const r = await api.post("/pellets/daily/bulk", {
         start: bulkStart,
         end: bulkEnd,
         bags,
         bagKg,
+        pricePerBag: pricePerBag ?? undefined,
         note: bulkNote || undefined,
         skipExisting: bulkSkipExisting,
       });
 
       setActionMsg(`✅ Bulk OK — inserted: ${r.data.inserted}, skipped: ${r.data.skipped}, updated: ${r.data.updated}`);
       setBulkNote("");
+      setBulkPricePerBag("");
       await refresh();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
@@ -454,6 +490,20 @@ export default function WoodDashboard() {
                 </div>
 
                 <div style={rowStyle}>
+                  <label style={fieldLabel}>Prix sac</label>
+                  <select style={inputStyle} value={pelletPricePerBag} onChange={(e) => setPelletPricePerBag(e.target.value)}>
+                    <option value="">Choisir un prix (optionnel)</option>
+                    {deliveries
+                      .filter((delivery) => delivery.pricePerBag != null)
+                      .map((delivery) => (
+                        <option key={delivery.id} value={String(delivery.pricePerBag)}>
+                          {delivery.date} • {delivery.pricePerBag?.toFixed(2)} €
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div style={rowStyle}>
                   <label style={fieldLabel}>Note</label>
                   <input style={inputStyle} value={pelletNote} onChange={(e) => setPelletNote(e.target.value)} placeholder="optionnel" />
                 </div>
@@ -479,6 +529,17 @@ export default function WoodDashboard() {
                 <div style={{ ...rowStyle, opacity: 0.85 }}>
                   <label style={fieldLabel}>ou sacs</label>
                   <input style={inputStyle} inputMode="numeric" value={deliveryBags} onChange={(e) => setDeliveryBags(e.target.value)} placeholder="ex: 60" />
+                </div>
+
+                <div style={rowStyle}>
+                  <label style={fieldLabel}>Prix sac</label>
+                  <input
+                    style={inputStyle}
+                    inputMode="decimal"
+                    value={deliveryPricePerBag}
+                    onChange={(e) => setDeliveryPricePerBag(e.target.value)}
+                    placeholder="ex: 6.50"
+                  />
                 </div>
 
                 <div style={rowStyle}>
@@ -535,6 +596,20 @@ export default function WoodDashboard() {
                 <div style={rowStyle}>
                   <label style={fieldLabel}>kg / sac</label>
                   <input style={inputStyle} inputMode="numeric" value={bulkBagKg} onChange={(e) => setBulkBagKg(e.target.value)} />
+                </div>
+
+                <div style={rowStyle}>
+                  <label style={fieldLabel}>Prix sac</label>
+                  <select style={inputStyle} value={bulkPricePerBag} onChange={(e) => setBulkPricePerBag(e.target.value)}>
+                    <option value="">Choisir un prix (optionnel)</option>
+                    {deliveries
+                      .filter((delivery) => delivery.pricePerBag != null)
+                      .map((delivery) => (
+                        <option key={delivery.id} value={String(delivery.pricePerBag)}>
+                          {delivery.date} • {delivery.pricePerBag?.toFixed(2)} €
+                        </option>
+                      ))}
+                  </select>
                 </div>
 
                 <div style={rowStyle}>

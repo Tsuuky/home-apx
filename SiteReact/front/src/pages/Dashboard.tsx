@@ -30,6 +30,7 @@ type SeasonStatsResponse = {
 type WaterReading = {
   date: string;
   cubicM: number;
+  pricePerM3?: number | null;
   note?: string | null;
 };
 
