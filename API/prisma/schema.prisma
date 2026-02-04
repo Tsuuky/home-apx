@@ -75,9 +75,18 @@ model StockMovement {
 model ColdWaterReading {
   date        DateTime @id
   cubicM      Float
-  pricePerM3  Float?
   note        String?
   createdAt   DateTime @default(now())
 
   @@index([date])
+}
+
+model ColdWaterPricePeriod {
+  id         Int      @id @default(autoincrement())
+  startDate  DateTime
+  endDate    DateTime
+  pricePerM3 Float
+  createdAt  DateTime @default(now())
+
+  @@index([startDate, endDate])
 }

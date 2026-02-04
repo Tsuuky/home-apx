@@ -14,7 +14,6 @@ type PelletReading = {
 type WaterReading = {
   date: string;
   cubicM: number;
-  pricePerM3?: number | null;
   note?: string | null;
 };
 
@@ -59,7 +58,6 @@ export default function Readings() {
   const [editNote, setEditNote] = useState("");
   const [editCubicM, setEditCubicM] = useState("");
   const [editPricePerBag, setEditPricePerBag] = useState("");
-  const [editPricePerM3, setEditPricePerM3] = useState("");
 
   async function refresh() {
     setLoading(true);
@@ -95,7 +93,7 @@ export default function Readings() {
     const waterRows = waterReadings.map((row) => ({
       type: "water" as const,
       date: row.date,
-      label: `${row.cubicM.toFixed(2)} m³${row.pricePerM3 ? ` • ${row.pricePerM3.toFixed(2)} € / m³` : ""}`,
+      label: `${row.cubicM.toFixed(2)} m³`,
       note: row.note ?? "",
       raw: row,
     }));
@@ -118,7 +116,6 @@ export default function Readings() {
     setEditType("water");
     setEditDate(row.date);
     setEditCubicM(String(row.cubicM ?? ""));
-    setEditPricePerM3(row.pricePerM3 != null ? String(row.pricePerM3) : "");
     setEditNote(row.note ?? "");
   }
 
@@ -131,7 +128,6 @@ export default function Readings() {
     setEditNote("");
     setEditCubicM("");
     setEditPricePerBag("");
-    setEditPricePerM3("");
   }
 
   async function submitDelete(rowType: "wood" | "water", date: string) {
@@ -191,16 +187,11 @@ export default function Readings() {
 
         await api.patch(`/pellets/daily/${editDate}`, payload);
       } else {
-        const payload: { cubicM?: number; pricePerM3?: number; note?: string } = {};
+        const payload: { cubicM?: number; note?: string } = {};
         if (editCubicM.trim()) {
           const cubicM = Number(editCubicM);
           if (!Number.isFinite(cubicM) || cubicM < 0) throw new Error("m³ invalide");
           payload.cubicM = cubicM;
-        }
-        if (editPricePerM3.trim()) {
-          const pricePerM3 = Number(editPricePerM3);
-          if (!Number.isFinite(pricePerM3) || pricePerM3 < 0) throw new Error("Prix m³ invalide");
-          payload.pricePerM3 = pricePerM3;
         }
         if (editNote.trim()) payload.note = editNote.trim();
         if (Object.keys(payload).length === 0) throw new Error("Renseigne une valeur");
@@ -311,16 +302,10 @@ export default function Readings() {
               </div>
             </>
           ) : (
-            <>
-              <div className="form-row">
-                <label>m³</label>
-                <input className="input" value={editCubicM} onChange={(e) => setEditCubicM(e.target.value)} />
-              </div>
-              <div className="form-row">
-                <label>Prix m³ (€)</label>
-                <input className="input" value={editPricePerM3} onChange={(e) => setEditPricePerM3(e.target.value)} />
-              </div>
-            </>
+            <div className="form-row">
+              <label>m³</label>
+              <input className="input" value={editCubicM} onChange={(e) => setEditCubicM(e.target.value)} />
+            </div>
           )}
           <div className="form-row">
             <label>Note</label>

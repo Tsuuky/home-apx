@@ -17,13 +17,25 @@ import Modal from "../components/Modal";
 type Reading = {
   date: string;
   cubicM: number;
-  pricePerM3?: number | null;
   note?: string | null;
 };
 
 type ReadingsResponse = {
   ok: boolean;
   readings: Reading[];
+};
+
+type PricePeriod = {
+  id: number;
+  startDate: string;
+  endDate: string;
+  pricePerM3: number;
+  createdAt: string;
+};
+
+type PricePeriodsResponse = {
+  ok: boolean;
+  prices: PricePeriod[];
 };
 
 function toISODate(d: Date) {
@@ -57,12 +69,10 @@ export default function Water() {
 
   const [newDate, setNewDate] = useState(todayISO());
   const [newCubicM, setNewCubicM] = useState("");
-  const [newPricePerM3, setNewPricePerM3] = useState("");
   const [newNote, setNewNote] = useState("");
 
   const [updateDate, setUpdateDate] = useState(todayISO());
   const [updateCubicM, setUpdateCubicM] = useState("");
-  const [updatePricePerM3, setUpdatePricePerM3] = useState("");
   const [updateNote, setUpdateNote] = useState("");
 
   const [deleteDate, setDeleteDate] = useState(todayISO());
@@ -73,9 +83,13 @@ export default function Water() {
   const [rangeType, setRangeType] = useState<"custom" | "week" | "month" | "year">("month");
   const [rangeStart, setRangeStart] = useState(firstDayOfMonthISO());
   const [rangeEnd, setRangeEnd] = useState(todayISO());
-  const [visibleLines, setVisibleLines] = useState({ perDay: true, delta: true });
+  const [visibleLines, setVisibleLines] = useState({ perDay: true, delta: true, cost: true });
+  const [pricePeriods, setPricePeriods] = useState<PricePeriod[]>([]);
+  const [priceStartDate, setPriceStartDate] = useState(firstDayOfMonthISO());
+  const [priceEndDate, setPriceEndDate] = useState(todayISO());
+  const [pricePerM3Input, setPricePerM3Input] = useState("");
 
-  function toggleLine(key: "perDay" | "delta") {
+  function toggleLine(key: "perDay" | "delta" | "cost") {
     setVisibleLines((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -84,8 +98,12 @@ export default function Water() {
     setError(null);
 
     try {
-      const res = await api.get<ReadingsResponse>("/water/cold");
+      const [res, pricesRes] = await Promise.all([
+        api.get<ReadingsResponse>("/water/cold"),
+        api.get<PricePeriodsResponse>("/water/cold/prices"),
+      ]);
       setReadings(res.data.readings);
+      setPricePeriods(pricesRes.data.prices ?? []);
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur inconnue");
     } finally {
@@ -153,14 +171,20 @@ export default function Water() {
     return total / filteredIntervals.length;
   }, [filteredIntervals]);
 
-  const latestPricePerM3 = useMemo(() => {
-    if (readings.length === 0) return null;
-    const sorted = [...readings].sort((a, b) => b.date.localeCompare(a.date));
-    for (const row of sorted) {
-      if (row.pricePerM3 != null) return row.pricePerM3;
-    }
-    return null;
-  }, [readings]);
+  const currentPricePerM3 = useMemo(() => {
+    const today = todayISO();
+    const current = pricePeriods.find((period) => period.startDate <= today && period.endDate >= today);
+    return current?.pricePerM3 ?? null;
+  }, [pricePeriods]);
+
+  const sortedPricePeriods = useMemo(
+    () => [...pricePeriods].sort((a, b) => a.startDate.localeCompare(b.startDate)),
+    [pricePeriods]
+  );
+
+  function findPriceForDate(date: string) {
+    return sortedPricePeriods.find((period) => period.startDate <= date && period.endDate >= date)?.pricePerM3 ?? null;
+  }
 
   const reminderBadge = useMemo(() => {
     if (readings.length === 0) return "badge badge-alert";
@@ -182,13 +206,58 @@ export default function Water() {
 
   const chartData = useMemo(
     () =>
-      filteredIntervals.map((row) => ({
-        date: row.to,
-        perDay: Number(row.perDay.toFixed(3)),
-        delta: Number(row.delta.toFixed(2)),
-      })),
-    [filteredIntervals]
+      filteredIntervals.map((row) => {
+        const price = findPriceForDate(row.to);
+        return {
+          date: row.to,
+          perDay: Number(row.perDay.toFixed(3)),
+          delta: Number(row.delta.toFixed(2)),
+          cost: price != null ? Number((row.delta * price).toFixed(2)) : null,
+        };
+      }),
+    [filteredIntervals, sortedPricePeriods]
   );
+
+  async function submitPricePeriod() {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const pricePerM3 = Number(pricePerM3Input);
+      if (!Number.isFinite(pricePerM3) || pricePerM3 < 0) throw new Error("Prix m³ invalide");
+
+      await api.post("/water/cold/prices", {
+        startDate: priceStartDate,
+        endDate: priceEndDate,
+        pricePerM3,
+      });
+
+      setMessage("✅ Prix de l’eau enregistré");
+      setPricePerM3Input("");
+      await refresh();
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePricePeriod(id: number) {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      await api.delete(`/water/cold/prices/${id}`);
+      setMessage("✅ Prix supprimé");
+      await refresh();
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submitCreate() {
     setBusy(true);
@@ -198,21 +267,14 @@ export default function Water() {
     try {
       const cubicM = Number(newCubicM);
       if (!Number.isFinite(cubicM) || cubicM < 0) throw new Error("Valeur m³ invalide");
-      const pricePerM3 = newPricePerM3.trim() ? Number(newPricePerM3) : null;
-      if (pricePerM3 != null && (!Number.isFinite(pricePerM3) || pricePerM3 < 0)) {
-        throw new Error("Prix m³ invalide");
-      }
-
       await api.post("/water/cold", {
         date: newDate,
         cubicM,
-        pricePerM3: pricePerM3 ?? undefined,
         note: newNote || undefined,
       });
 
       setMessage("✅ Relevé eau froide créé");
       setNewCubicM("");
-      setNewPricePerM3("");
       setNewNote("");
       await refresh();
     } catch (e: any) {
@@ -228,16 +290,11 @@ export default function Water() {
     setError(null);
 
     try {
-      const payload: { cubicM?: number; pricePerM3?: number; note?: string } = {};
+      const payload: { cubicM?: number; note?: string } = {};
       if (updateCubicM.trim()) {
         const cubicM = Number(updateCubicM);
         if (!Number.isFinite(cubicM) || cubicM < 0) throw new Error("Valeur m³ invalide");
         payload.cubicM = cubicM;
-      }
-      if (updatePricePerM3.trim()) {
-        const pricePerM3 = Number(updatePricePerM3);
-        if (!Number.isFinite(pricePerM3) || pricePerM3 < 0) throw new Error("Prix m³ invalide");
-        payload.pricePerM3 = pricePerM3;
       }
       if (updateNote.trim()) payload.note = updateNote.trim();
 
@@ -246,7 +303,6 @@ export default function Water() {
       await api.patch(`/water/cold/${updateDate}`, payload);
       setMessage("✅ Relevé eau froide mis à jour");
       setUpdateCubicM("");
-      setUpdatePricePerM3("");
       setUpdateNote("");
       await refresh();
     } catch (e: any) {
@@ -343,7 +399,7 @@ export default function Water() {
                 <Legend
                   onClick={(entry) => {
                     const key = entry?.dataKey;
-                    if (key === "perDay" || key === "delta") {
+                    if (key === "perDay" || key === "delta" || key === "cost") {
                       toggleLine(key);
                     }
                   }}
@@ -363,6 +419,15 @@ export default function Water() {
                   stroke="#7dffa7"
                   hide={!visibleLines.delta}
                   onClick={() => toggleLine("delta")}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cost"
+                  name="Coût période (€)"
+                  stroke="#ffcf5c"
+                  hide={!visibleLines.cost}
+                  onClick={() => toggleLine("cost")}
+                  connectNulls
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -387,11 +452,75 @@ export default function Water() {
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Dernier prix m³</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Prix actuel m³</div>
               <div style={{ fontSize: 22, fontWeight: 600 }}>
-                {latestPricePerM3 != null ? `${latestPricePerM3.toFixed(2)} € / m³` : "—"}
+                {currentPricePerM3 != null ? `${currentPricePerM3.toFixed(2)} € / m³` : "—"}
               </div>
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="section-card">
+        <h2 className="section-title">Prix de l’eau</h2>
+        <div className="grid-two">
+          <div>
+            <div className="form-row">
+              <label>Début</label>
+              <input className="input" type="date" value={priceStartDate} onChange={(e) => setPriceStartDate(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Fin</label>
+              <input className="input" type="date" value={priceEndDate} onChange={(e) => setPriceEndDate(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Prix m³ (€)</label>
+              <input
+                className="input"
+                value={pricePerM3Input}
+                onChange={(e) => setPricePerM3Input(e.target.value)}
+                placeholder="ex: 2.85"
+              />
+            </div>
+            <button className="btn btn-primary" onClick={submitPricePeriod} disabled={busy}>
+              Enregistrer le prix
+            </button>
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.75 }}>
+            <p style={{ marginTop: 0 }}>
+              Définissez un prix pour une période donnée. Le coût affiché sur le graphique utilise le prix de la période
+              correspondant à la date de fin de chaque intervalle.
+            </p>
+          </div>
+        </div>
+        {pricePeriods.length === 0 ? (
+          <p style={{ marginTop: 16 }}>Aucun prix défini.</p>
+        ) : (
+          <div style={{ overflowX: "auto", marginTop: 16 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", fontSize: 12, opacity: 0.8, padding: "8px" }}>Période</th>
+                  <th style={{ textAlign: "left", fontSize: 12, opacity: 0.8, padding: "8px" }}>Prix</th>
+                  <th style={{ textAlign: "left", fontSize: 12, opacity: 0.8, padding: "8px" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPricePeriods.map((period) => (
+                  <tr key={period.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                    <td style={{ padding: "8px" }}>
+                      {period.startDate} → {period.endDate}
+                    </td>
+                    <td style={{ padding: "8px" }}>{period.pricePerM3.toFixed(2)} € / m³</td>
+                    <td style={{ padding: "8px" }}>
+                      <button className="btn" onClick={() => deletePricePeriod(period.id)} disabled={busy}>
+                        Supprimer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
@@ -457,15 +586,6 @@ export default function Water() {
                 <input className="input" value={newCubicM} onChange={(e) => setNewCubicM(e.target.value)} placeholder="ex: 123.4" />
               </div>
               <div className="form-row">
-                <label>Prix m³ (€)</label>
-                <input
-                  className="input"
-                  value={newPricePerM3}
-                  onChange={(e) => setNewPricePerM3(e.target.value)}
-                  placeholder="ex: 2.85"
-                />
-              </div>
-              <div className="form-row">
                 <label>Note</label>
                 <input className="input" value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="optionnel" />
               </div>
@@ -487,15 +607,6 @@ export default function Water() {
                   value={updateCubicM}
                   onChange={(e) => setUpdateCubicM(e.target.value)}
                   placeholder="ex: 124.0"
-                />
-              </div>
-              <div className="form-row">
-                <label>Prix m³ (€)</label>
-                <input
-                  className="input"
-                  value={updatePricePerM3}
-                  onChange={(e) => setUpdatePricePerM3(e.target.value)}
-                  placeholder="ex: 2.85"
                 />
               </div>
               <div className="form-row">
