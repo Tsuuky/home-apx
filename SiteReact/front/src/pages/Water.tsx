@@ -213,10 +213,21 @@ export default function Water() {
           perDay: Number(row.perDay.toFixed(3)),
           delta: Number(row.delta.toFixed(2)),
           cost: price != null ? Number((row.delta * price).toFixed(2)) : null,
+          pricePerM3: price,
         };
       }),
     [filteredIntervals, sortedPricePeriods]
   );
+
+  const totalCost = useMemo(() => {
+    if (filteredIntervals.length === 0) return null;
+    const sum = filteredIntervals.reduce((acc, row) => {
+      const price = findPriceForDate(row.to);
+      if (price == null) return acc;
+      return acc + row.delta * price;
+    }, 0);
+    return Number(sum.toFixed(2));
+  }, [filteredIntervals, sortedPricePeriods]);
 
   async function submitPricePeriod() {
     setBusy(true);
@@ -395,7 +406,31 @@ export default function Water() {
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || payload.length === 0) return null;
+                    const point = payload[0]?.payload as {
+                      date: string;
+                      perDay: number;
+                      delta: number;
+                      cost: number | null;
+                      pricePerM3: number | null;
+                    };
+                    return (
+                      <div style={{ background: "#0f1720", padding: 10, borderRadius: 8, border: "1px solid #1f2a38" }}>
+                        <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>Conso période : {point.delta.toFixed(2)} m³</div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>m³ / jour : {point.perDay.toFixed(3)}</div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          Prix m³ : {point.pricePerM3 != null ? `${point.pricePerM3.toFixed(2)} €` : "—"}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          Coût période : {point.cost != null ? `${point.cost.toFixed(2)} €` : "—"}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
                 <Legend
                   onClick={(entry) => {
                     const key = entry?.dataKey;
@@ -456,6 +491,10 @@ export default function Water() {
               <div style={{ fontSize: 22, fontWeight: 600 }}>
                 {currentPricePerM3 != null ? `${currentPricePerM3.toFixed(2)} € / m³` : "—"}
               </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Coût total période</div>
+              <div style={{ fontSize: 22, fontWeight: 600 }}>{totalCost != null ? `${totalCost.toFixed(2)} €` : "—"}</div>
             </div>
           </div>
         )}
