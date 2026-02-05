@@ -64,6 +64,25 @@ waterRouter.patch("/water/cold/:date", async (req, res) => {
   res.json({ ok: true, reading });
 });
 
+waterRouter.get("/water/cold/latest", async (_req, res) => {
+  const last = await prisma.coldWaterReading.findFirst({
+    orderBy: { date: "desc" },
+  });
+
+  if (!last) {
+    return res.json({ ok: true, reading: null });
+  }
+
+  res.json({
+    ok: true,
+    reading: {
+      cubicM: last.cubicM,
+      date: last.date.toISOString().slice(0, 10),
+    },
+  });
+});
+
+
 waterRouter.delete("/water/cold/:date", async (req, res) => {
   const dateStr = req.params.date;
   const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);

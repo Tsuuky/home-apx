@@ -1,0 +1,9 @@
+version: "3.9"
+
+services:
+  water-api:
+    build: .
+    container_name: water-api
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
