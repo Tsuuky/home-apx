@@ -123,6 +123,7 @@ pelletsRouter.post("/pellets/daily", async (req, res) => {
     kg: z.number().positive().optional(),
     bags: z.number().int().positive().optional(),
     bagKg: z.number().positive().optional().default(15),
+    pricePerBag: z.number().nonnegative().optional(),
     note: z.string().optional(),
     seasonId: z.number().int().optional(),
   });
@@ -154,6 +155,7 @@ pelletsRouter.post("/pellets/daily", async (req, res) => {
       kg,
       bags: parsed.data.bags ?? null,
       bagKg: parsed.data.bags != null ? bagKg : null,
+      pricePerBag: parsed.data.pricePerBag ?? null,
       note: parsed.data.note ?? null,
       seasonId,
     },
@@ -171,6 +173,7 @@ pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
     kg: z.number().positive().optional(),
     bags: z.number().int().positive().optional(),
     bagKg: z.number().positive().optional().default(15),
+    pricePerBag: z.number().nonnegative().optional(),
     note: z.string().optional(),
     seasonId: z.number().int().optional(),
   });
@@ -181,6 +184,7 @@ pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
   if (
     parsed.data.kg == null &&
     parsed.data.bags == null &&
+    parsed.data.pricePerBag == null &&
     parsed.data.note == null &&
     parsed.data.seasonId == null
   ) {
@@ -195,6 +199,7 @@ pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
     kg?: number;
     bags?: number | null;
     bagKg?: number | null;
+    pricePerBag?: number | null;
     note?: string | null;
     seasonId?: number | null;
   } = {};
@@ -214,6 +219,10 @@ pelletsRouter.patch("/pellets/daily/:date", async (req, res) => {
 
   if (parsed.data.note !== undefined) {
     data.note = parsed.data.note ?? null;
+  }
+
+  if (parsed.data.pricePerBag !== undefined) {
+    data.pricePerBag = parsed.data.pricePerBag ?? null;
   }
 
   if (parsed.data.seasonId !== undefined) {
@@ -251,6 +260,7 @@ pelletsRouter.put("/pellets/daily/:date", async (req, res) => {
     kg: z.number().positive().optional(),
     bags: z.number().int().positive().optional(),
     bagKg: z.number().positive().optional().default(15),
+    pricePerBag: z.number().nonnegative().optional(),
     note: z.string().optional(),
     seasonId: z.number().int().optional(),
   });
@@ -280,6 +290,7 @@ pelletsRouter.put("/pellets/daily/:date", async (req, res) => {
       kg,
       bags: parsed.data.bags ?? null,
       bagKg: parsed.data.bags != null ? bagKg : null,
+      pricePerBag: parsed.data.pricePerBag ?? null,
       note: parsed.data.note ?? null,
       seasonId,
     },
@@ -288,6 +299,7 @@ pelletsRouter.put("/pellets/daily/:date", async (req, res) => {
       kg,
       bags: parsed.data.bags ?? null,
       bagKg: parsed.data.bags != null ? bagKg : null,
+      pricePerBag: parsed.data.pricePerBag ?? null,
       note: parsed.data.note ?? null,
       seasonId,
     },
@@ -349,6 +361,7 @@ pelletsRouter.post("/stock/delivery", async (req, res) => {
     kg: z.number().positive().optional(),
     bags: z.number().int().positive().optional(),
     bagKg: z.number().positive().optional().default(15),
+    pricePerBag: z.number().nonnegative().optional(),
     note: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
@@ -363,7 +376,7 @@ pelletsRouter.post("/stock/delivery", async (req, res) => {
   const kg = parsed.data.kg ?? bagsToKg(parsed.data.bags!, bagKg);
 
   const mvt = await prisma.stockMovement.create({
-    data: { type: "DELIVERY", date, kg, note: parsed.data.note ?? null },
+    data: { type: "DELIVERY", date, kg, pricePerBag: parsed.data.pricePerBag ?? null, note: parsed.data.note ?? null },
   });
 
   res.json({ ok: true, movement: mvt });
@@ -397,6 +410,21 @@ pelletsRouter.get("/stock/current", async (_req, res) => {
   const today = new Date();
   const current = await computeStockAt(today);
   res.json({ ok: true, kg: current });
+});
+
+pelletsRouter.get("/stock/deliveries", async (_req, res) => {
+  const rows = await prisma.stockMovement.findMany({
+    where: { type: "DELIVERY" },
+    orderBy: { date: "desc" },
+  });
+
+  res.json({
+    ok: true,
+    deliveries: rows.map((row) => ({
+      ...row,
+      date: row.date.toISOString().slice(0, 10),
+    })),
+  });
 });
 
 // --- helpers stock ---
@@ -525,6 +553,7 @@ pelletsRouter.post("/pellets/daily/bulk", async (req, res) => {
     bags: z.number().int().positive().optional(),
     kg: z.number().positive().optional(),
     bagKg: z.number().positive().optional().default(15),
+    pricePerBag: z.number().nonnegative().optional(),
     note: z.string().optional(),
     seasonId: z.number().int().optional(),
     skipExisting: z.boolean().optional().default(true),
@@ -591,6 +620,7 @@ pelletsRouter.post("/pellets/daily/bulk", async (req, res) => {
         kg: kgValue,
         bags: parsed.data.bags ?? null,
         bagKg: parsed.data.bags != null ? bagKg : null,
+        pricePerBag: parsed.data.pricePerBag ?? null,
         note: parsed.data.note ?? null,
         seasonId,
       },
@@ -599,6 +629,7 @@ pelletsRouter.post("/pellets/daily/bulk", async (req, res) => {
         kg: kgValue,
         bags: parsed.data.bags ?? null,
         bagKg: parsed.data.bags != null ? bagKg : null,
+        pricePerBag: parsed.data.pricePerBag ?? null,
         note: parsed.data.note ?? null,
         seasonId,
       },

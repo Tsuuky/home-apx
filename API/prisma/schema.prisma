@@ -46,13 +46,14 @@ model Season {
 }
 
 model PelletDaily {
-  date     DateTime @id // 1 ligne par jour
-  kg       Float
-  bags     Int? // optionnel (ex 2 sacs)
-  bagKg    Float? // optionnel (ex 15)
-  note     String?
-  seasonId Int?
-  season   Season?  @relation(fields: [seasonId], references: [id])
+  date          DateTime @id // 1 ligne par jour
+  kg            Float
+  bags          Int? // optionnel (ex 2 sacs)
+  bagKg         Float? // optionnel (ex 15)
+  pricePerBag   Float?
+  note          String?
+  seasonId      Int?
+  season        Season?  @relation(fields: [seasonId], references: [id])
 
   createdAt DateTime @default(now())
 
@@ -60,21 +61,32 @@ model PelletDaily {
 }
 
 model StockMovement {
-  id        Int               @id @default(autoincrement())
-  type      StockMovementType
-  date      DateTime
-  kg        Float // + entrée, - sortie (mais ici on fera surtout + et correction)
-  note      String?
-  createdAt DateTime          @default(now())
+  id           Int               @id @default(autoincrement())
+  type         StockMovementType
+  date         DateTime
+  kg           Float // + entrée, - sortie (mais ici on fera surtout + et correction)
+  pricePerBag  Float?
+  note         String?
+  createdAt    DateTime          @default(now())
 
   @@index([date])
 }
 
 model ColdWaterReading {
-  date      DateTime @id
-  cubicM    Float
-  note      String?
-  createdAt DateTime @default(now())
+  date        DateTime @id
+  cubicM      Float
+  note        String?
+  createdAt   DateTime @default(now())
 
   @@index([date])
+}
+
+model ColdWaterPricePeriod {
+  id         Int      @id @default(autoincrement())
+  startDate  DateTime
+  endDate    DateTime
+  pricePerM3 Float
+  createdAt  DateTime @default(now())
+
+  @@index([startDate, endDate])
 }

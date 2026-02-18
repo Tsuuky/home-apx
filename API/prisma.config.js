@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
+const config_1 = require("prisma/config");
+const url = process.env.DATABASE_URL ?? "file:./dev.db";
+exports.default = (0, config_1.defineConfig)({
+    schema: "prisma/schema.prisma",
+    migrations: {
+        path: "prisma/migrations",
+    },
+    datasource: {
+        url,
+    },
+});

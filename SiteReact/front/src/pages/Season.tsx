@@ -30,6 +30,17 @@ type SeasonStatsResponse = {
   series: Array<{ date: string; kg: number; dju: number }>;
 };
 
+type DeliveryResponse = {
+  ok: boolean;
+  deliveries: Array<{
+    id: number;
+    date: string;
+    kg: number;
+    pricePerBag?: number | null;
+    note?: string | null;
+  }>;
+};
+
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -59,12 +70,14 @@ export default function Season() {
   const [readingKg, setReadingKg] = useState("");
   const [readingBags, setReadingBags] = useState("2");
   const [readingBagKg, setReadingBagKg] = useState("15");
+  const [readingPricePerBag, setReadingPricePerBag] = useState("");
   const [readingNote, setReadingNote] = useState("");
 
   const [updateDate, setUpdateDate] = useState(todayISO());
   const [updateKg, setUpdateKg] = useState("");
   const [updateBags, setUpdateBags] = useState("");
   const [updateBagKg, setUpdateBagKg] = useState("15");
+  const [updatePricePerBag, setUpdatePricePerBag] = useState("");
   const [updateNote, setUpdateNote] = useState("");
 
   const [editName, setEditName] = useState("");
@@ -72,6 +85,7 @@ export default function Season() {
   const [editBaseC, setEditBaseC] = useState("18");
 
   const [deleteDate, setDeleteDate] = useState(todayISO());
+  const [deliveries, setDeliveries] = useState<DeliveryResponse["deliveries"]>([]);
 
   const navigate = useNavigate();
 
@@ -80,8 +94,12 @@ export default function Season() {
     setError(null);
 
     try {
-      const s = await api.get<ActiveSeasonResponse>("/season/active");
+      const [s, deliveriesRes] = await Promise.all([
+        api.get<ActiveSeasonResponse>("/season/active"),
+        api.get<DeliveryResponse>("/stock/deliveries"),
+      ]);
       setSeason(s.data.season);
+      setDeliveries(deliveriesRes.data.deliveries ?? []);
 
       if (s.data.season) {
         const st = await api.get<SeasonStatsResponse>(`/season/${s.data.season.id}/stats`);
@@ -171,12 +189,19 @@ export default function Season() {
     }
   }
 
-  function buildReadingPayload(kgValue: string, bagsValue: string, bagKgValue: string, noteValue: string) {
+  function buildReadingPayload(
+    kgValue: string,
+    bagsValue: string,
+    bagKgValue: string,
+    noteValue: string,
+    pricePerBagValue: string,
+    requireQuantity: boolean
+  ) {
     const kg = kgValue.trim() ? Number(kgValue) : null;
     const bags = bagsValue.trim() ? Number(bagsValue) : null;
     const bagKg = Number(bagKgValue);
 
-    if (kg == null && bags == null) {
+    if (requireQuantity && kg == null && bags == null) {
       throw new Error("Renseigne kg ou sacs");
     }
 
@@ -184,6 +209,7 @@ export default function Season() {
       kg?: number;
       bags?: number;
       bagKg?: number;
+      pricePerBag?: number;
       note?: string;
     } = {};
 
@@ -198,6 +224,15 @@ export default function Season() {
     }
 
     if (noteValue.trim()) payload.note = noteValue.trim();
+    if (pricePerBagValue.trim()) {
+      const pricePerBag = Number(pricePerBagValue);
+      if (!Number.isFinite(pricePerBag) || pricePerBag < 0) throw new Error("Prix sac invalide");
+      payload.pricePerBag = pricePerBag;
+    }
+
+    if (!requireQuantity && Object.keys(payload).length === 0) {
+      throw new Error("Renseigne kg, sacs, prix ou note");
+    }
 
     return payload;
   }
@@ -208,7 +243,7 @@ export default function Season() {
     setError(null);
 
     try {
-      const payload = buildReadingPayload(readingKg, readingBags, readingBagKg, readingNote);
+      const payload = buildReadingPayload(readingKg, readingBags, readingBagKg, readingNote, readingPricePerBag, true);
 
       await api.post("/pellets/daily", {
         date: readingDate,
@@ -218,6 +253,7 @@ export default function Season() {
       setMessage("✅ Relevé créé");
       setReadingNote("");
       setReadingKg("");
+      setReadingPricePerBag("");
       await refresh();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
@@ -232,7 +268,7 @@ export default function Season() {
     setError(null);
 
     try {
-      const payload = buildReadingPayload(updateKg, updateBags, updateBagKg, updateNote);
+      const payload = buildReadingPayload(updateKg, updateBags, updateBagKg, updateNote, updatePricePerBag, false);
 
       await api.patch(`/pellets/daily/${updateDate}`, payload);
 
@@ -240,6 +276,7 @@ export default function Season() {
       setUpdateNote("");
       setUpdateKg("");
       setUpdateBags("");
+      setUpdatePricePerBag("");
       await refresh();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? "Erreur");
@@ -384,6 +421,19 @@ export default function Season() {
               <input className="input" value={readingBagKg} onChange={(e) => setReadingBagKg(e.target.value)} placeholder="ex: 15" />
             </div>
             <div className="form-row">
+              <label>Prix sac (€)</label>
+              <select className="input" value={readingPricePerBag} onChange={(e) => setReadingPricePerBag(e.target.value)}>
+                <option value="">Choisir un prix (optionnel)</option>
+                {deliveries
+                  .filter((delivery) => delivery.pricePerBag != null)
+                  .map((delivery) => (
+                    <option key={delivery.id} value={String(delivery.pricePerBag)}>
+                      {delivery.date} • {delivery.pricePerBag?.toFixed(2)} €
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="form-row">
               <label>Note</label>
               <input className="input" value={readingNote} onChange={(e) => setReadingNote(e.target.value)} placeholder="optionnel" />
             </div>
@@ -419,6 +469,19 @@ export default function Season() {
             <div className="form-row">
               <label>kg/sac</label>
               <input className="input" value={updateBagKg} onChange={(e) => setUpdateBagKg(e.target.value)} placeholder="ex: 15" />
+            </div>
+            <div className="form-row">
+              <label>Prix sac (€)</label>
+              <select className="input" value={updatePricePerBag} onChange={(e) => setUpdatePricePerBag(e.target.value)}>
+                <option value="">Choisir un prix (optionnel)</option>
+                {deliveries
+                  .filter((delivery) => delivery.pricePerBag != null)
+                  .map((delivery) => (
+                    <option key={delivery.id} value={String(delivery.pricePerBag)}>
+                      {delivery.date} • {delivery.pricePerBag?.toFixed(2)} €
+                    </option>
+                  ))}
+              </select>
             </div>
             <div className="form-row">
               <label>Note</label>

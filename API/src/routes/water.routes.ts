@@ -64,6 +64,25 @@ waterRouter.patch("/water/cold/:date", async (req, res) => {
   res.json({ ok: true, reading });
 });
 
+waterRouter.get("/water/cold/latest", async (_req, res) => {
+  const last = await prisma.coldWaterReading.findFirst({
+    orderBy: { date: "desc" },
+  });
+
+  if (!last) {
+    return res.json({ ok: true, reading: null });
+  }
+
+  res.json({
+    ok: true,
+    reading: {
+      cubicM: last.cubicM,
+      date: last.date.toISOString().slice(0, 10),
+    },
+  });
+});
+
+
 waterRouter.delete("/water/cold/:date", async (req, res) => {
   const dateStr = req.params.date;
   const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
@@ -105,4 +124,104 @@ waterRouter.get("/water/cold", async (req, res) => {
       date: r.date.toISOString().slice(0, 10),
     })),
   });
+});
+
+waterRouter.get("/water/cold/prices", async (_req, res) => {
+  const prices = await prisma.coldWaterPricePeriod.findMany({
+    orderBy: { startDate: "asc" },
+  });
+
+  res.json({
+    ok: true,
+    prices: prices.map((p) => ({
+      ...p,
+      startDate: p.startDate.toISOString().slice(0, 10),
+      endDate: p.endDate.toISOString().slice(0, 10),
+    })),
+  });
+});
+
+waterRouter.post("/water/cold/prices", async (req, res) => {
+  const schema = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    pricePerM3: z.number().nonnegative(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  const startDate = parseISODateToUTC(parsed.data.startDate);
+  const endDate = parseISODateToUTC(parsed.data.endDate);
+  if (endDate < startDate) return res.status(400).json({ error: "endDate must be >= startDate" });
+
+  const price = await prisma.coldWaterPricePeriod.create({
+    data: {
+      startDate,
+      endDate,
+      pricePerM3: parsed.data.pricePerM3,
+    },
+  });
+
+  res.json({
+    ok: true,
+    price: {
+      ...price,
+      startDate: price.startDate.toISOString().slice(0, 10),
+      endDate: price.endDate.toISOString().slice(0, 10),
+    },
+  });
+});
+
+waterRouter.patch("/water/cold/prices/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const schema = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    pricePerM3: z.number().nonnegative().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  if (parsed.data.startDate == null && parsed.data.endDate == null && parsed.data.pricePerM3 == null) {
+    return res.status(400).json({ error: "Provide at least one field to update" });
+  }
+
+  const existing = await prisma.coldWaterPricePeriod.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: "Price period not found" });
+
+  const startDate = parsed.data.startDate ? parseISODateToUTC(parsed.data.startDate) : existing.startDate;
+  const endDate = parsed.data.endDate ? parseISODateToUTC(parsed.data.endDate) : existing.endDate;
+  if (endDate < startDate) return res.status(400).json({ error: "endDate must be >= startDate" });
+
+  const price = await prisma.coldWaterPricePeriod.update({
+    where: { id },
+    data: {
+      startDate: parsed.data.startDate ? startDate : undefined,
+      endDate: parsed.data.endDate ? endDate : undefined,
+      pricePerM3: parsed.data.pricePerM3 ?? undefined,
+    },
+  });
+
+  res.json({
+    ok: true,
+    price: {
+      ...price,
+      startDate: price.startDate.toISOString().slice(0, 10),
+      endDate: price.endDate.toISOString().slice(0, 10),
+    },
+  });
+});
+
+waterRouter.delete("/water/cold/prices/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const existing = await prisma.coldWaterPricePeriod.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: "Price period not found" });
+
+  await prisma.coldWaterPricePeriod.delete({ where: { id } });
+
+  res.json({ ok: true });
 });

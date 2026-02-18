@@ -7,6 +7,7 @@ type PelletReading = {
   kg: number;
   bags?: number | null;
   bagKg?: number | null;
+  pricePerBag?: number | null;
   note?: string | null;
 };
 
@@ -56,6 +57,7 @@ export default function Readings() {
   const [editBagKg, setEditBagKg] = useState("15");
   const [editNote, setEditNote] = useState("");
   const [editCubicM, setEditCubicM] = useState("");
+  const [editPricePerBag, setEditPricePerBag] = useState("");
 
   async function refresh() {
     setLoading(true);
@@ -84,7 +86,7 @@ export default function Readings() {
     const woodRows = pelletReadings.map((row) => ({
       type: "wood" as const,
       date: row.date,
-      label: `${row.kg.toFixed(1)} kg${row.bags ? ` (${row.bags} sacs)` : ""}`,
+      label: `${row.kg.toFixed(1)} kg${row.bags ? ` (${row.bags} sacs)` : ""}${row.pricePerBag ? ` • ${row.pricePerBag.toFixed(2)} € / sac` : ""}`,
       note: row.note ?? "",
       raw: row,
     }));
@@ -106,6 +108,7 @@ export default function Readings() {
     setEditKg(String(row.kg ?? ""));
     setEditBags(row.bags != null ? String(row.bags) : "");
     setEditBagKg(row.bagKg != null ? String(row.bagKg) : "15");
+    setEditPricePerBag(row.pricePerBag != null ? String(row.pricePerBag) : "");
     setEditNote(row.note ?? "");
   }
 
@@ -124,6 +127,7 @@ export default function Readings() {
     setEditBagKg("15");
     setEditNote("");
     setEditCubicM("");
+    setEditPricePerBag("");
   }
 
   async function submitDelete(rowType: "wood" | "water", date: string) {
@@ -156,8 +160,14 @@ export default function Readings() {
       if (editType === "wood") {
         const kgValue = editKg.trim();
         const bagsValue = editBags.trim();
-        const payload: { kg?: number; bags?: number; bagKg?: number; note?: string } = {};
+        const payload: { kg?: number; bags?: number; bagKg?: number; pricePerBag?: number; note?: string } = {};
 
+        if (editNote.trim()) payload.note = editNote.trim();
+        if (editPricePerBag.trim()) {
+          const pricePerBag = Number(editPricePerBag);
+          if (!Number.isFinite(pricePerBag) || pricePerBag < 0) throw new Error("Prix sac invalide");
+          payload.pricePerBag = pricePerBag;
+        }
         if (kgValue) {
           const kg = Number(kgValue);
           if (!Number.isFinite(kg) || kg <= 0) throw new Error("kg invalide");
@@ -169,11 +179,11 @@ export default function Readings() {
           if (!Number.isFinite(bagKg) || bagKg <= 0) throw new Error("kg/sac invalide");
           payload.bags = bags;
           payload.bagKg = bagKg;
-        } else {
-          throw new Error("Renseigne kg ou sacs");
         }
 
-        if (editNote.trim()) payload.note = editNote.trim();
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Renseigne kg, sacs, prix ou note");
+        }
 
         await api.patch(`/pellets/daily/${editDate}`, payload);
       } else {
@@ -285,6 +295,10 @@ export default function Readings() {
               <div className="form-row">
                 <label>kg/sac</label>
                 <input className="input" value={editBagKg} onChange={(e) => setEditBagKg(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label>Prix sac (€)</label>
+                <input className="input" value={editPricePerBag} onChange={(e) => setEditPricePerBag(e.target.value)} />
               </div>
             </>
           ) : (
